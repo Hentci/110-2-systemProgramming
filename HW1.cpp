@@ -35,7 +35,7 @@ int main(){
         dsts[i].id = nd;
     }
 
-    linkid -> useless
+    // linkid -> useless
     int a, b, linkid;
     ll ow, nw;
     for(int i = 0;i < m;i++){
