@@ -15,9 +15,9 @@ class node{
 };
 class edge{
     public:
-    bool isold;
+    bool isold; // determine whether the node is old or not
     ui neighbor;
-    ll w;
+    ll w; // weight
     edge(){}
     edge(bool a, int b, ll c): isold(a), neighbor(b), w(c){}
 };
@@ -25,9 +25,9 @@ int main(){
     // freopen("input.txt", "r", stdin);
     int n, dst, m; // n -> the number of nodes, m -> the number of links
     cin >> n >> dst >> m;
-    vector <vector <edge>> G(mxn);
-    vector <node> dsts(dst); 
-    map<ui, map<ui, ui>> table;
+    vector <vector <edge>> G(mxn); // Graph
+    vector <node> dsts(dst);  // all destinations
+    map<ui, map<ui, ui>> table; // output table <node id, destination id, ans>
     
 
     for(int i = 0, nd;i < dst;i++){
@@ -35,7 +35,7 @@ int main(){
         dsts[i].id = nd;
     }
 
-    // map <int, ar<int, 3>> links; // <a, linkid, b, w> linkid -> useless
+    linkid -> useless
     int a, b, linkid;
     ll ow, nw;
     for(int i = 0;i < m;i++){
@@ -47,22 +47,26 @@ int main(){
     }
 
     vector <ll> d(n);
-    // vector <bool> inPath(n);
-    vector <ui> par(n);
+    vector <ui> par(n); // record the shortest path 
     auto dijk = [&](bool ok, ui st) -> void{
         fill(d.begin(), d.end(), 0x3f3f3f3f3f);
         d[st] = 0;
         par[st] = st;
+        /* init */
+
+        /* dijkstra */
         priority_queue <ar<ll, 2>, vector <ar<ll, 2>>, greater<ar<ll, 2>>> pq;
         pq.push({0, st});
         while(!pq.empty()){
             auto [wei, v] = pq.top(); pq.pop();
             if(wei > d[v]) continue;
             for(auto ele: G[v]){
+                // to determine use which weight
                 if(ele.isold == ok) continue;
                 // upd smaller node if they are same d
                 if(d[ele.neighbor] == d[v] + ele.w && v < par[ele.neighbor])
                     par[ele.neighbor] = v;
+                // dijkstra -> greedy
                 if(d[ele.neighbor] > d[v] + ele.w){
                     par[ele.neighbor] = v;
                     d[ele.neighbor] = d[v] + ele.w;
@@ -71,7 +75,7 @@ int main(){
             }
         }
     };
-
+    /* process the old table */
     for(auto ele: dsts){
         dijk(0, ele.id);
         for(int i = 0;i < n;i++){
@@ -84,7 +88,7 @@ int main(){
         for(auto ele: table[i])
             cout << ele.first << " " << ele.second << "\n";
     }
-
+    /* process the new table */
     for(auto ele: dsts){
         dijk(1, ele.id);
         for(int i = 0;i < n;i++){
@@ -102,7 +106,6 @@ int main(){
         for(auto ele: table[i])
             cout << ele.first << " " << ele.second << "\n";
     }
-
 
     return 0;
 }
