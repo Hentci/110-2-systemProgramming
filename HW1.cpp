@@ -48,7 +48,7 @@ int main(){
 
     vector <ll> d(n);
     vector <ui> par(n); // record the shortest path 
-    auto dijk = [&](bool ok, ui st) -> void{
+    auto dijk = [&](bool no, ui st) -> void{
         fill(d.begin(), d.end(), 0x3f3f3f3f3f);
         d[st] = 0;
         par[st] = st;
@@ -62,7 +62,7 @@ int main(){
             if(wei > d[v]) continue;
             for(auto ele: G[v]){
                 // to determine use which weight
-                if(ele.isold == ok) continue;
+                if(ele.isold == no) continue;
                 // upd smaller node if they are same d
                 if(d[ele.neighbor] == d[v] + ele.w && v < par[ele.neighbor])
                     par[ele.neighbor] = v;
