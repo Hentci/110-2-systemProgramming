@@ -1240,20 +1240,38 @@ int main()
     // link::link_generator::print(); // print all registered links 
     
     // read the input and generate switch nodes
-    for (unsigned int id = 0; id < 5; id ++){
-        node::node_generator::generate("SDN_switch",id);
-    }
+    // for (unsigned int id = 0; id < 5; id ++){
+    //     node::node_generator::generate("SDN_switch",id);
+    // }
     // set switches' neighbors
-    node::id_to_node(0)->add_phy_neighbor(1);
-    node::id_to_node(1)->add_phy_neighbor(0);
-    node::id_to_node(0)->add_phy_neighbor(2);
-    node::id_to_node(2)->add_phy_neighbor(0);
-    node::id_to_node(1)->add_phy_neighbor(2);
-    node::id_to_node(2)->add_phy_neighbor(1);
-    node::id_to_node(1)->add_phy_neighbor(3);
-    node::id_to_node(3)->add_phy_neighbor(1);
-    node::id_to_node(2)->add_phy_neighbor(4);
-    node::id_to_node(4)->add_phy_neighbor(2);
+    // node::id_to_node(0)->add_phy_neighbor(1);
+    // node::id_to_node(1)->add_phy_neighbor(0);
+    // node::id_to_node(0)->add_phy_neighbor(2);
+    // node::id_to_node(2)->add_phy_neighbor(0);
+    // node::id_to_node(1)->add_phy_neighbor(2);
+    // node::id_to_node(2)->add_phy_neighbor(1);
+    // node::id_to_node(1)->add_phy_neighbor(3);
+    // node::id_to_node(3)->add_phy_neighbor(1);
+    // node::id_to_node(2)->add_phy_neighbor(4);
+    // node::id_to_node(4)->add_phy_neighbor(2);
+
+    /******************** input ***********************/
+    int n, dstCnt, m, insTime, updTime, simDuration;
+    cin >> n >> dstCnt >> m >> insTime >> updTime >> simDuration;
+    vector <int> dsts(dstCnt);
+    for(int i = 0, nd;i < dstCnt;i++){
+        cin >> nd;
+        dsts[i] = nd;
+    }
+
+    for(unsigned int id = 0; id < n;id++)
+        node::node_generator::generate("SDN_switch", id);
+    
+    for(unsigned int i = 0, a, b, linkId;i < m;i++){
+        cin >> linkId >> a >> b;
+        node::id_to_node(a) -> add_phy_neighbor(b);
+        node::id_to_node(b) -> add_phy_neighbor(a);
+    }
 
     // generate all initial events that you want to simulate in the networks
     unsigned int t = 0, src = 0, dst = BROCAST_ID;
