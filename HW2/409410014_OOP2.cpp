@@ -439,7 +439,8 @@ class node {
         static map<unsigned int, node*> id_node_table;
         
         unsigned int id;
-        map<unsigned int,bool> phy_neighbors;
+        // TODO
+        map<unsigned int,pair <int, int>> phy_neighbors;
         
     protected:
         node(node&){} // this constructor should not be used
@@ -451,12 +452,13 @@ class node {
         }
         virtual string type() = 0; // please define it in your derived node class
         
-        void add_phy_neighbor (unsigned int _id, string link_type = "simple_link"); // we only add a directed link from id to _id
+        void add_phy_neighbor (unsigned int _id, int weight, int isNew, string link_type = "simple_link"); // we only add a directed link from id to _id
+        // simple link (latency = 10)
         void del_phy_neighbor (unsigned int _id); // we only delete a directed link from id to _id
         
         // you can use the function to get the node's neigbhors at this time
         // but in the project 3, you are not allowed to use this function 
-        const map<unsigned int,bool> & getPhyNeighbors () { 
+        const map<unsigned int, pair <int, int>> & getPhyNeighbors () { 
             return phy_neighbors;
         }
         
@@ -908,6 +910,7 @@ class link {
                 // you have to implement your own type() to return your link type
         	    virtual string type() = 0;
         	    // this function is used to generate any type of link derived
+                // TODO
         	    static link * generate (string type, unsigned int _id1, unsigned int _id2) {
         	        if(id_id_link_table.find(pair<unsigned int,unsigned int>(_id1,_id2))!=id_id_link_table.end()){
         	            std::cerr << "duplicate link id" << std::endl; // link id is duplicated
@@ -935,12 +938,12 @@ class link {
 map<string,link::link_generator*> link::link_generator::prototypes;
 map<pair<unsigned int,unsigned int>, link*> link::id_id_link_table;
 
-void node::add_phy_neighbor (unsigned int _id, string link_type){
+void node::add_phy_neighbor (unsigned int _id, int weight, int isNew, string link_type){
     if (id == _id) return; // if the two nodes are the same...
     if (id_node_table.find(_id)==id_node_table.end()) return; // if this node does not exist
     if (phy_neighbors.find(_id)!=phy_neighbors.end()) return; // if this neighbor has been added
-    phy_neighbors[_id] = true;
-    
+    phy_neighbors[_id] = {weight, isNew};
+    // TODO    
     link::link_generator::generate(link_type,id,_id);
 }
 void node::del_phy_neighbor (unsigned int _id){
@@ -978,6 +981,7 @@ class simple_link: public link {
 simple_link::simple_link_generator simple_link::simple_link_generator::sample;
 
 class SDN_switch: public node {
+        // TODO add table
         // map<unsigned int,bool> one_hop_neighbors; // you can use this variable to record the node's 1-hop neighbors 
         
         bool hi; // this is used for example; you can remove it when doing hw2
@@ -1043,6 +1047,7 @@ void data_packet_event (unsigned int src, unsigned int dst, unsigned int t = 0, 
         }
     }
 
+    // TODO
     hdr->setSrcID(src);
     hdr->setDstID(dst);
     hdr->setPreID(src);
@@ -1094,7 +1099,7 @@ void ctrl_packet_event (unsigned int dst, unsigned int t = 0, string msg = "defa
             cerr << "node type is incorrect" << endl; return ;
         }
     }
-
+    // TODO
     unsigned int src = node::getNodeNum(); // we assume the controller exists and its ID is the largest ID
     hdr->setSrcID(src); 
     hdr->setDstID(dst);
@@ -1136,7 +1141,7 @@ void node::send (packet *p){ // this function is called by event; not for the us
     if (p == nullptr) return;
     
     unsigned int _nexID = p->getHeader()->getNexID();
-    for ( map<unsigned int,bool>::iterator it = phy_neighbors.begin(); it != phy_neighbors.end(); it ++) {
+    for ( map<unsigned int,pair <int, int>>::iterator it = phy_neighbors.begin(); it != phy_neighbors.end(); it ++) {
         unsigned int nb_id = it->first; // neighbor id
         
         if (nb_id != _nexID && BROCAST_ID != _nexID) continue; // this neighbor will not receive the packet
@@ -1156,7 +1161,8 @@ void node::send (packet *p){ // this function is called by event; not for the us
     packet::discard(p);
 }
 
-// you have to write the code in recv_handler of SDN_switch
+// you have to write the code in recv_handler of SDN_switch 
+/* TODO */ // recv -> process -> send (hi ? recieved ?)
 void SDN_switch::recv_handler (packet *p){
     // in this function, you are "not" allowed to use node::id_to_node(id) !!!!!!!!
 
@@ -1243,7 +1249,7 @@ int main()
     // for (unsigned int id = 0; id < 5; id ++){
     //     node::node_generator::generate("SDN_switch",id);
     // }
-    // set switches' neighbors
+    // // set switches' neighbors
     // node::id_to_node(0)->add_phy_neighbor(1);
     // node::id_to_node(1)->add_phy_neighbor(0);
     // node::id_to_node(0)->add_phy_neighbor(2);
@@ -1267,16 +1273,25 @@ int main()
     for(unsigned int id = 0; id < n;id++)
         node::node_generator::generate("SDN_switch", id);
     
-    for(unsigned int i = 0, a, b, linkId;i < m;i++){
-        cin >> linkId >> a >> b;
-        node::id_to_node(a) -> add_phy_neighbor(b);
-        node::id_to_node(b) -> add_phy_neighbor(a);
+    for(unsigned int i = 0, a, b, linkId, ow, nw;i < m;i++){
+        cin >> linkId >> a >> b >> ow >> nw;
+        node::id_to_node(a) -> add_phy_neighbor(b, ow, 0);
+        node::id_to_node(b) -> add_phy_neighbor(a, ow, 0);
+        node::id_to_node(a) -> add_phy_neighbor(b, nw, 1);
+        node::id_to_node(b) -> add_phy_neighbor(a, nw, 1);
     }
 
-    // generate all initial events that you want to simulate in the networks
-    unsigned int t = 0, src = 0, dst = BROCAST_ID;
-    // read the input and use data_packet_event to add an initial event
-    data_packet_event(src, dst, t);
+    // // generate all initial events that you want to simulate in the networks
+    // unsigned int t = 0, src = 0, dst = BROCAST_ID;
+    // // read the input and use data_packet_event to add an initial event
+    // data_packet_event(src, dst, t);
+    // map <int, pair<int, int>> data_packet_eventTable;
+    unsigned int src, dst, t;
+    for(int i = 0;i < dstCnt * 2;i++){
+        cin >> t >> src >> dst;
+        // data_packet_eventTable[t] = {src, dst};
+        data_packet_event(src, dst, t);
+    }   
     
     dst = 0;
     for (unsigned int id = 0; id < node::getNodeNum(); id ++){
@@ -1296,3 +1311,10 @@ int main()
     return 0;
 }
 
+// recv_packet -> process -> send_handler
+// orginType packet -> dynamic_cast -> give the type to packet
+// data_packet_event -> debug
+// crtl_packet_event 
+// ctrl_packet -> msg (dstID, nxtID)
+// dst if not exist, delete the packet
+// networkUpdTime -> old weight to new weight
