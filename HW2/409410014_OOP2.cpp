@@ -8,6 +8,10 @@
 #include <stack>
 
 using namespace std;
+using ui = unsigned int;
+#define ll long long
+#define ar array
+const int mxn = 2e3;
 
 #define SET(func_name,type,var_name,_var_name) void func_name(type _var_name) { var_name = _var_name ;} 
 #define GET(func_name,type,var_name) type func_name() const { return var_name ;}
@@ -439,8 +443,7 @@ class node {
         static map<unsigned int, node*> id_node_table;
         
         unsigned int id;
-        // TODO
-        map<unsigned int,pair <int, int>> phy_neighbors;
+        map<unsigned int,bool> phy_neighbors;
         
     protected:
         node(node&){} // this constructor should not be used
@@ -452,13 +455,12 @@ class node {
         }
         virtual string type() = 0; // please define it in your derived node class
         
-        void add_phy_neighbor (unsigned int _id, int weight, int isNew, string link_type = "simple_link"); // we only add a directed link from id to _id
-        // simple link (latency = 10)
+        void add_phy_neighbor (unsigned int _id, string link_type = "simple_link"); // we only add a directed link from id to _id
         void del_phy_neighbor (unsigned int _id); // we only delete a directed link from id to _id
         
         // you can use the function to get the node's neigbhors at this time
         // but in the project 3, you are not allowed to use this function 
-        const map<unsigned int, pair <int, int>> & getPhyNeighbors () { 
+        const map<unsigned int,bool> & getPhyNeighbors () { 
             return phy_neighbors;
         }
         
@@ -910,7 +912,6 @@ class link {
                 // you have to implement your own type() to return your link type
         	    virtual string type() = 0;
         	    // this function is used to generate any type of link derived
-                // TODO
         	    static link * generate (string type, unsigned int _id1, unsigned int _id2) {
         	        if(id_id_link_table.find(pair<unsigned int,unsigned int>(_id1,_id2))!=id_id_link_table.end()){
         	            std::cerr << "duplicate link id" << std::endl; // link id is duplicated
@@ -938,12 +939,12 @@ class link {
 map<string,link::link_generator*> link::link_generator::prototypes;
 map<pair<unsigned int,unsigned int>, link*> link::id_id_link_table;
 
-void node::add_phy_neighbor (unsigned int _id, int weight, int isNew, string link_type){
+void node::add_phy_neighbor (unsigned int _id, string link_type){
     if (id == _id) return; // if the two nodes are the same...
     if (id_node_table.find(_id)==id_node_table.end()) return; // if this node does not exist
     if (phy_neighbors.find(_id)!=phy_neighbors.end()) return; // if this neighbor has been added
-    phy_neighbors[_id] = {weight, isNew};
-    // TODO    
+    phy_neighbors[_id] = true;
+    
     link::link_generator::generate(link_type,id,_id);
 }
 void node::del_phy_neighbor (unsigned int _id){
@@ -981,9 +982,8 @@ class simple_link: public link {
 simple_link::simple_link_generator simple_link::simple_link_generator::sample;
 
 class SDN_switch: public node {
-        // TODO add table
+
         // map<unsigned int,bool> one_hop_neighbors; // you can use this variable to record the node's 1-hop neighbors 
-        
         bool hi; // this is used for example; you can remove it when doing hw2
 
     protected:
@@ -1047,7 +1047,6 @@ void data_packet_event (unsigned int src, unsigned int dst, unsigned int t = 0, 
         }
     }
 
-    // TODO
     hdr->setSrcID(src);
     hdr->setDstID(dst);
     hdr->setPreID(src);
@@ -1099,7 +1098,7 @@ void ctrl_packet_event (unsigned int dst, unsigned int t = 0, string msg = "defa
             cerr << "node type is incorrect" << endl; return ;
         }
     }
-    // TODO
+
     unsigned int src = node::getNodeNum(); // we assume the controller exists and its ID is the largest ID
     hdr->setSrcID(src); 
     hdr->setDstID(dst);
@@ -1141,7 +1140,7 @@ void node::send (packet *p){ // this function is called by event; not for the us
     if (p == nullptr) return;
     
     unsigned int _nexID = p->getHeader()->getNexID();
-    for ( map<unsigned int,pair <int, int>>::iterator it = phy_neighbors.begin(); it != phy_neighbors.end(); it ++) {
+    for ( map<unsigned int,bool>::iterator it = phy_neighbors.begin(); it != phy_neighbors.end(); it ++) {
         unsigned int nb_id = it->first; // neighbor id
         
         if (nb_id != _nexID && BROCAST_ID != _nexID) continue; // this neighbor will not receive the packet
@@ -1160,9 +1159,8 @@ void node::send (packet *p){ // this function is called by event; not for the us
     }
     packet::discard(p);
 }
-
-// you have to write the code in recv_handler of SDN_switch 
-/* TODO */ // recv -> process -> send (hi ? recieved ?)
+map <ui, map <ui, ui>> table; //[id, [dst, nxt]]
+// you have to write the code in recv_handler of SDN_switch
 void SDN_switch::recv_handler (packet *p){
     // in this function, you are "not" allowed to use node::id_to_node(id) !!!!!!!!
 
@@ -1176,9 +1174,10 @@ void SDN_switch::recv_handler (packet *p){
         // cout << "node " << getNodeID() << " send the packet" << endl;
         SDN_data_packet * p2 = nullptr;
         p2 = dynamic_cast<SDN_data_packet*> (p);
+        ui dstID = p2->getHeader()->getDstID();
         p2->getHeader()->setPreID ( getNodeID() );
-        p2->getHeader()->setNexID ( BROCAST_ID );
-        p2->getHeader()->setDstID ( BROCAST_ID );
+        p2->getHeader()->setNexID ( table[getNodeID()][dstID] );
+        p2->getHeader()->setDstID ( dstID );
         hi = true;
         send_handler (p2);
     }
@@ -1236,8 +1235,23 @@ void SDN_switch::recv_handler (packet *p){
     // note that packet p will be discarded (deleted) after recv_handler(); you don't need to manually delete it
 }
 
+class nd{
+    public:
+    ui id;
+};
+
+class edge{
+    public:
+    bool isNew;
+    ui neighbor;
+    ll w;
+    edge(){}
+    edge(bool a, int b, ll c): isNew(a), neighbor(b), w(c){}
+};
+
 int main()
 {
+    freopen("input.txt", "r", stdin);
     // header::header_generator::print(); // print all registered headers
     // payload::payload_generator::print(); // print all registered payloads
     // packet::packet_generator::print(); // print all registered packets
@@ -1245,7 +1259,7 @@ int main()
     // event::event_generator::print(); // print all registered events
     // link::link_generator::print(); // print all registered links 
     
-    // read the input and generate switch nodes
+    // // read the input and generate switch nodes
     // for (unsigned int id = 0; id < 5; id ++){
     //     node::node_generator::generate("SDN_switch",id);
     // }
@@ -1260,61 +1274,146 @@ int main()
     // node::id_to_node(3)->add_phy_neighbor(1);
     // node::id_to_node(2)->add_phy_neighbor(4);
     // node::id_to_node(4)->add_phy_neighbor(2);
-
-    /******************** input ***********************/
     int n, dstCnt, m, insTime, updTime, simDuration;
     cin >> n >> dstCnt >> m >> insTime >> updTime >> simDuration;
-    vector <int> dsts(dstCnt);
+    vector <vector <edge>> G(mxn);
+    vector <nd> dsts(dstCnt);
+    // map <ui, map <ui, ui>> table; // [id, dst, nxt]
+
     for(int i = 0, nd;i < dstCnt;i++){
         cin >> nd;
-        dsts[i] = nd;
+        dsts[i].id = nd;
+    }
+    /******** switch ********/
+    for(ui id = 0;id < n;id++)
+        node::node_generator::generate("SDN_switch", id);
+
+    // linkid -> useless
+    int a, b, linkid;
+    ll ow, nw;
+    for(int i = 0;i < m;i++){
+        cin >> linkid >> a >> b >> ow >> nw;
+        G[a].push_back(edge(false, b, ow));
+        G[b].push_back(edge(false, a, ow));
+        G[a].push_back(edge(true, b, nw));
+        G[b].push_back(edge(true, a, nw));
+        node::id_to_node(a) -> add_phy_neighbor(b);
+        node::id_to_node(b) -> add_phy_neighbor(a);
     }
 
-    for(unsigned int id = 0; id < n;id++)
-        node::node_generator::generate("SDN_switch", id);
-    
-    for(unsigned int i = 0, a, b, linkId, ow, nw;i < m;i++){
-        cin >> linkId >> a >> b >> ow >> nw;
-        node::id_to_node(a) -> add_phy_neighbor(b, ow, 0);
-        node::id_to_node(b) -> add_phy_neighbor(a, ow, 0);
-        node::id_to_node(a) -> add_phy_neighbor(b, nw, 1);
-        node::id_to_node(b) -> add_phy_neighbor(a, nw, 1);
+    vector <ll> d(n);
+    vector <ui> par(n); // record the shortest path 
+    auto dijk = [&](bool status, ui st) -> void{
+        fill(d.begin(), d.end(), 0x3f3f3f3f3f);
+        d[st] = 0;
+        par[st] = st;
+        /* init */
+
+        /* dijkstra */
+        priority_queue <ar<ll, 2>, vector <ar<ll, 2>>, greater<ar<ll, 2>>> pq;
+        pq.push({0, st});
+        while(!pq.empty()){
+            auto [wei, v] = pq.top(); pq.pop();
+            if(wei > d[v]) continue;
+            for(auto ele: G[v]){
+                // to determine use which weight
+                if(ele.isNew != status) continue;
+                // upd smaller node if they are same d
+                if(d[ele.neighbor] == d[v] + ele.w && v < par[ele.neighbor])
+                    par[ele.neighbor] = v;
+                // dijkstra -> greedy
+                if(d[ele.neighbor] > d[v] + ele.w){
+                    par[ele.neighbor] = v;
+                    d[ele.neighbor] = d[v] + ele.w;
+                    pq.push({d[ele.neighbor], ele.neighbor});
+                }
+            }
+        }
+    };
+
+    // data_packet_event
+    int t, src, dst;
+    vector <ar<int, 3>> datapktEvents;
+    for(int i = 0;i < dstCnt * 2;i++){
+        cin >> t >> src >> dst;
+        datapktEvents.push_back({src, dst, t});
     }
+
+    /* process the old table */
+    for(auto ele: dsts){
+        dijk(0, ele.id);
+        for(int i = 0;i < n;i++){
+            if(i == (int)ele.id) continue;
+            table[i][ele.id] = par[i];
+            string msg = to_string(ele.id) + " " + to_string(table[i][ele.id]);
+            ctrl_packet_event(i, insTime, msg);
+        }
+    }
+    // for(auto ele: dsts){
+    //     for(int id = 0;id < node::getNodeNum();id++){
+    //         if(id == (int)ele.id) continue;
+    //         string msg = to_string(ele.id) + " " + to_string(table[id][ele.id]);
+    //         ctrl_packet_event(id, insTime, msg);
+    //     }
+    // }
+    // for(int id = 0;id < node::getNodeNum();id++){
+    //     // string msg = to_string(0) + " " + to_string(0); //msg(dst " " nxt)
+    //     // ctrl_packet_event(id, insTime, msg);
+    // }
+
+
+    for(int i = 0;i < dstCnt;i++)
+        data_packet_event(datapktEvents[i][0], datapktEvents[i][1], datapktEvents[i][2]); // src, dst, t
+    
+
+    
+
+    /* process the new table */
+    for(auto ele: dsts){
+        dijk(1, ele.id);
+        for(int i = 0;i < n;i++){
+            if(i == (int)ele.id) continue;
+            if(par[i] == table[i][ele.id]){
+                // table[i].erase(ele.id);
+                continue;
+            }
+            table[i][ele.id] = par[i];
+            string msg = to_string(ele.id) + " " + to_string(table[i][ele.id]);
+            ctrl_packet_event(i, updTime, msg);
+        }
+    }    
+    // for(auto ele: dsts){
+    //     for(int id = 0;id < node::getNodeNum();id++){
+    //         if(id == (int)ele.id) continue;
+    //         // if(table[id].empty()) continue;
+    //         string msg = to_string(ele.id) + " " + to_string(table[id][ele.id]);
+    //         ctrl_packet_event(id, updTime, msg);
+    //     }
+    // }
+
+    for(int i = dstCnt;i < dstCnt * 2;i++)
+        data_packet_event(datapktEvents[i][0], datapktEvents[i][1], datapktEvents[i][2]);
 
     // // generate all initial events that you want to simulate in the networks
     // unsigned int t = 0, src = 0, dst = BROCAST_ID;
     // // read the input and use data_packet_event to add an initial event
     // data_packet_event(src, dst, t);
-    // map <int, pair<int, int>> data_packet_eventTable;
-    unsigned int src, dst, t;
-    for(int i = 0;i < dstCnt * 2;i++){
-        cin >> t >> src >> dst;
-        // data_packet_eventTable[t] = {src, dst};
-        data_packet_event(src, dst, t);
-    }   
     
-    dst = 0;
-    for (unsigned int id = 0; id < node::getNodeNum(); id ++){
-        string msg = to_string(dst) + " " + to_string(dst);
-        // cout << msg << endl;
-        ctrl_packet_event(id, 100, msg);
-        // msg is used to update an entry in the switch's routing table
-        // note that msg should contain the two factors:
-        // 1st factor: the destination id
-        // 2nd factor: the next hop id toward the destination
-    }
+    // dst = 0;
+    // for (unsigned int id = 0; id < node::getNodeNum(); id ++){
+    //     string msg = to_string(dst) + " " + to_string(dst); //msg(dst, next)
+    //     // cout << msg << endl;
+    //     ctrl_packet_event(id, 100, msg);
+    //     // msg is used to update an entry in the switch's routing table
+    //     // note that msg should contain the two factors:
+    //     // 1st factor: the destination id
+    //     // 2nd factor: the next hop id toward the destination
+    // }
 
     // start simulation!!
     event::start_simulate(300);
     // event::flush_events() ;
-    // cout << packet::getLivePacketNdum() << endl;
+    // cout << packet::getLivePacketNum() << endl;
     return 0;
 }
 
-// recv_packet -> process -> send_handler
-// orginType packet -> dynamic_cast -> give the type to packet
-// data_packet_event -> debug
-// crtl_packet_event 
-// ctrl_packet -> msg (dstID, nxtID)
-// dst if not exist, delete the packet
-// networkUpdTime -> old weight to new weight
