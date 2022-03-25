@@ -6,10 +6,12 @@
 #include <functional>
 #include <iomanip>
 #include <stack>
+#include <tuple>
 
 using namespace std;
 using ui = unsigned int;
 #define ll long long
+#define all(x) x.begin(), x.end()
 #define ar array
 const int mxn = 2e3;
 
@@ -1333,12 +1335,15 @@ int main()
 
     // data_packet_event
     int t, src, dst;
-    vector <ar<int, 3>> datapktEvents;
+    vector <ar<int, 3>> dataOutput;
     for(int i = 0;i < dstCnt * 2;i++){
         cin >> t >> src >> dst;
-        datapktEvents.push_back({src, dst, t});
+        dataOutput.push_back({src, dst, t});
     }
+    sort(all(dataOutput), 
+        [](ar <int, 3> A, ar <int, 3> B){ return A[0] == B[0] ? A[1] < B[1] : A[1] == B[1] ? A[2] < B[2] : 0; });
 
+    vector <tuple<unsigned int, unsigned int, string>> ctrlOutputOLD;
     /* process the old table */
     for(auto ele: dsts){
         dijk(0, ele.id);
@@ -1346,8 +1351,19 @@ int main()
             if(i == (int)ele.id) continue;
             table[i][ele.id] = par[i];
             string msg = to_string(ele.id) + " " + to_string(table[i][ele.id]);
-            ctrl_packet_event(i, insTime, msg);
+            ctrlOutputOLD.push_back({i, insTime, msg});
+            // ctrl_packet_event(i, insTime, msg);
         }
+    }
+    auto cmp = [](tuple <ui, ui, string> A, tuple <ui, ui, string> B) -> bool{
+        auto [Aid, Atime, Amsg] = A;
+        auto [Bid, Btime, Bmsg] = B;
+        return Atime == Btime ? Aid < Bid : Aid == Bid ? Amsg < Bmsg : 0;
+    };
+    sort(all(ctrlOutputOLD), cmp);
+    for(auto ele: ctrlOutputOLD){
+        auto [a, b, c] = ele;
+        ctrl_packet_event(a, b, c);
     }
     // for(auto ele: dsts){
     //     for(int id = 0;id < node::getNodeNum();id++){
@@ -1361,13 +1377,13 @@ int main()
     //     // ctrl_packet_event(id, insTime, msg);
     // }
 
-
+    /** OLD **/
     for(int i = 0;i < dstCnt;i++)
-        data_packet_event(datapktEvents[i][0], datapktEvents[i][1], datapktEvents[i][2]); // src, dst, t
+        data_packet_event(dataOutput[i][0], dataOutput[i][1], dataOutput[i][2]); // src, dst, t
     
 
     
-
+    vector <tuple <ui, ui, string>> ctrlOutputNEW;
     /* process the new table */
     for(auto ele: dsts){
         dijk(1, ele.id);
@@ -1379,9 +1395,18 @@ int main()
             }
             table[i][ele.id] = par[i];
             string msg = to_string(ele.id) + " " + to_string(table[i][ele.id]);
-            ctrl_packet_event(i, updTime, msg);
+            ctrlOutputNEW.push_back({i, updTime, msg});
+            // ctrl_packet_event(i, updTime, msg);
         }
     }    
+    /** sort **/
+    sort(all(ctrlOutputNEW), cmp);
+    for(auto ele: ctrlOutputNEW){
+        auto [a, b, c] = ele;
+        ctrl_packet_event(a, b, c);
+    }
+        
+    
     // for(auto ele: dsts){
     //     for(int id = 0;id < node::getNodeNum();id++){
     //         if(id == (int)ele.id) continue;
@@ -1392,7 +1417,7 @@ int main()
     // }
 
     for(int i = dstCnt;i < dstCnt * 2;i++)
-        data_packet_event(datapktEvents[i][0], datapktEvents[i][1], datapktEvents[i][2]);
+        data_packet_event(dataOutput[i][0], dataOutput[i][1], dataOutput[i][2]);
 
     // // generate all initial events that you want to simulate in the networks
     // unsigned int t = 0, src = 0, dst = BROCAST_ID;
@@ -1416,4 +1441,3 @@ int main()
     // cout << packet::getLivePacketNum() << endl;
     return 0;
 }
-
