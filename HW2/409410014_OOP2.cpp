@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <stack>
 #include <tuple>
+#include <algorithm>
 
 using namespace std;
 using ui = unsigned int;
@@ -644,6 +645,7 @@ void event::start_simulate(unsigned int _end_time) {
     end_time = _end_time;
     event *e; 
     e = event::get_next_event ();
+    if(e -> trigger_time < 0) return; // not bug TAT
     while ( e != nullptr && e->trigger_time <= end_time ) {
         if ( cur_time <= e->trigger_time )
             cur_time = e->trigger_time;
@@ -983,15 +985,16 @@ class simple_link: public link {
 
 simple_link::simple_link_generator simple_link::simple_link_generator::sample;
 
+// TODO
 class SDN_switch: public node {
-
-        // map<unsigned int,bool> one_hop_neighbors; // you can use this variable to record the node's 1-hop neighbors 
-        bool hi; // this is used for example; you can remove it when doing hw2
+        map <ui, ui> one_hop_neighbors; // you can use this variable to record the node's 1-hop neighbors 
+        map <ui, bool> ok; // this is used for example; you can remove it when doing hw2
+        // to check if the packet have been switched
 
     protected:
         SDN_switch() {} // it should not be used
         SDN_switch(SDN_switch&) {} // it should not be used
-        SDN_switch(unsigned int _id): node(_id), hi(false) {} // this constructor cannot be directly called by users
+        SDN_switch(unsigned int _id): node(_id) {} // this constructor cannot be directly called by users
     
     public:
         ~SDN_switch(){}
@@ -1127,7 +1130,6 @@ void ctrl_packet_event (unsigned int dst, unsigned int t = 0, string msg = "defa
 
 // send_handler function is used to transmit packet p based on the information in the header
 // Note that the packet p will not be discard after send_handler ()
-
 void node::send_handler(packet *p){
     packet *_p = packet::packet_generator::replicate(p);
     send_event::send_data e_data;
@@ -1161,7 +1163,7 @@ void node::send (packet *p){ // this function is called by event; not for the us
     }
     packet::discard(p);
 }
-map <ui, map <ui, ui>> table; //[id, [dst, nxt]]
+
 // you have to write the code in recv_handler of SDN_switch
 void SDN_switch::recv_handler (packet *p){
     // in this function, you are "not" allowed to use node::id_to_node(id) !!!!!!!!
@@ -1172,15 +1174,25 @@ void SDN_switch::recv_handler (packet *p){
     // you can remove the variable hi and create your own variables in class SDN_switch
     if (p == nullptr) return ;
     
-    if (p->type() == "SDN_data_packet" && !hi ) { // the switch receives a packet from the other switch
+    // check if the dst table is empty
+    if (p->type() == "SDN_data_packet" && !one_hop_neighbors.empty() ) { // the switch receives a packet from the other switch
         // cout << "node " << getNodeID() << " send the packet" << endl;
         SDN_data_packet * p2 = nullptr;
         p2 = dynamic_cast<SDN_data_packet*> (p);
+
         ui dstID = p2->getHeader()->getDstID();
+
+        /** BUG **/
+        if(ok[p2 -> getPacketID()]) return; // if the packet have been recieved
+        if(dstID == getNodeID()) return; // if the dstID = nodeID
+        if(!one_hop_neighbors.count(dstID)) return; // if the dtsID is not in the table (FUCK YOU)
+
         p2->getHeader()->setPreID ( getNodeID() );
-        p2->getHeader()->setNexID ( table[getNodeID()][dstID] );
+        p2->getHeader()->setNexID ( one_hop_neighbors[dstID] );
         p2->getHeader()->setDstID ( dstID );
-        hi = true;
+        
+        ok[p2 -> getPacketID()] = true;
+
         send_handler (p2);
     }
     else if (p->type() == "SDN_ctrl_packet") { // the switch receives a packet from the controller
@@ -1191,6 +1203,13 @@ void SDN_switch::recv_handler (packet *p){
         
         string msg = l3->getMsg(); // get the msg
         // cout << getNodeID() << " received packet with msg context \"" << msg << "\""<< endl;
+
+        /** destruct the string **/
+        int nxtID, dstID;
+        auto it = msg.find(" ");
+        dstID = stoi(msg.substr(0, it));
+        nxtID = stoi(msg.substr(it + 1, (int)msg.size()));
+        one_hop_neighbors[dstID] = nxtID;
     }
 
     // you should implement the SDN's distributed algorithm in recv_handler
@@ -1251,9 +1270,20 @@ class edge{
     edge(bool a, int b, ll c): isNew(a), neighbor(b), w(c){}
 };
 
+class ALLpacketEvent{
+    public:
+    bool type; // false: ctrl, true: data
+    ui id = 0, time = 0, src = 0, dst = 0;
+    string msg;
+    ALLpacketEvent(){}
+    ALLpacketEvent(bool a, ui b, ui c, ui d): type(a), time(b), src(c), dst(d){}
+    ALLpacketEvent(bool a, ui b, ui c, string d): type(a), time(b), id(c), msg(d){}
+};
+
 int main()
 {
-    freopen("input.txt", "r", stdin);
+    // freopen("input2.txt", "r", stdin);
+    
     // header::header_generator::print(); // print all registered headers
     // payload::payload_generator::print(); // print all registered payloads
     // packet::packet_generator::print(); // print all registered packets
@@ -1280,7 +1310,7 @@ int main()
     cin >> n >> dstCnt >> m >> insTime >> updTime >> simDuration;
     vector <vector <edge>> G(mxn);
     vector <nd> dsts(dstCnt);
-    // map <ui, map <ui, ui>> table; // [id, dst, nxt]
+    map <ui, map <ui, ui>> table; // [id, dst, nxt]
 
     for(int i = 0, nd;i < dstCnt;i++){
         cin >> nd;
@@ -1295,6 +1325,7 @@ int main()
     ll ow, nw;
     for(int i = 0;i < m;i++){
         cin >> linkid >> a >> b >> ow >> nw;
+        if(a < 0 || a >= n || b < 0 || b >= n) continue; // not the bug TAT
         G[a].push_back(edge(false, b, ow));
         G[b].push_back(edge(false, a, ow));
         G[a].push_back(edge(true, b, nw));
@@ -1333,17 +1364,22 @@ int main()
         }
     };
 
+    vector <ALLpacketEvent> allPacketEvents;
     // data_packet_event
     int t, src, dst;
-    vector <ar<int, 3>> dataOutput;
-    for(int i = 0;i < dstCnt * 2;i++){
-        cin >> t >> src >> dst;
-        dataOutput.push_back({src, dst, t});
-    }
-    sort(all(dataOutput), 
-        [](ar <int, 3> A, ar <int, 3> B){ return A[0] == B[0] ? A[1] < B[1] : A[1] == B[1] ? A[2] < B[2] : 0; });
+    while(cin >> t >> src >> dst){
+        if(src >= n || src < 0){
+            allPacketEvents.push_back(ALLpacketEvent(true, t, BROCAST_ID, dst));
+            continue;
+        } // NOT a bug TAT
+        if(dst >= n || dst < 0){
+            allPacketEvents.push_back(ALLpacketEvent(true, t, src, BROCAST_ID));
+            continue;
+        } // NOT a bug TAT
 
-    vector <tuple<unsigned int, unsigned int, string>> ctrlOutputOLD;
+        allPacketEvents.push_back(ALLpacketEvent(true, t, src, dst)); 
+    }
+
     /* process the old table */
     for(auto ele: dsts){
         dijk(0, ele.id);
@@ -1351,74 +1387,25 @@ int main()
             if(i == (int)ele.id) continue;
             table[i][ele.id] = par[i];
             string msg = to_string(ele.id) + " " + to_string(table[i][ele.id]);
-            ctrlOutputOLD.push_back({i, insTime, msg});
-            // ctrl_packet_event(i, insTime, msg);
+            allPacketEvents.push_back(ALLpacketEvent(false, insTime, i, msg));
         }
     }
-    auto cmp = [](tuple <ui, ui, string> A, tuple <ui, ui, string> B) -> bool{
-        auto [Aid, Atime, Amsg] = A;
-        auto [Bid, Btime, Bmsg] = B;
-        return Atime == Btime ? Aid < Bid : Aid == Bid ? Amsg < Bmsg : 0;
-    };
-    sort(all(ctrlOutputOLD), cmp);
-    for(auto ele: ctrlOutputOLD){
-        auto [a, b, c] = ele;
-        ctrl_packet_event(a, b, c);
-    }
-    // for(auto ele: dsts){
-    //     for(int id = 0;id < node::getNodeNum();id++){
-    //         if(id == (int)ele.id) continue;
-    //         string msg = to_string(ele.id) + " " + to_string(table[id][ele.id]);
-    //         ctrl_packet_event(id, insTime, msg);
-    //     }
-    // }
-    // for(int id = 0;id < node::getNodeNum();id++){
-    //     // string msg = to_string(0) + " " + to_string(0); //msg(dst " " nxt)
-    //     // ctrl_packet_event(id, insTime, msg);
-    // }
-
-    /** OLD **/
-    for(int i = 0;i < dstCnt;i++)
-        data_packet_event(dataOutput[i][0], dataOutput[i][1], dataOutput[i][2]); // src, dst, t
     
-
-    
-    vector <tuple <ui, ui, string>> ctrlOutputNEW;
+    // vector <tuple <ui, ui, string>> ctrlOutputNEW;
     /* process the new table */
     for(auto ele: dsts){
         dijk(1, ele.id);
         for(int i = 0;i < n;i++){
             if(i == (int)ele.id) continue;
             if(par[i] == table[i][ele.id]){
-                // table[i].erase(ele.id);
+                table[i].erase(ele.id); // NOT a bug TAT
                 continue;
             }
             table[i][ele.id] = par[i];
             string msg = to_string(ele.id) + " " + to_string(table[i][ele.id]);
-            ctrlOutputNEW.push_back({i, updTime, msg});
-            // ctrl_packet_event(i, updTime, msg);
+            allPacketEvents.push_back(ALLpacketEvent(false, updTime, i, msg));
         }
     }    
-    /** sort **/
-    sort(all(ctrlOutputNEW), cmp);
-    for(auto ele: ctrlOutputNEW){
-        auto [a, b, c] = ele;
-        ctrl_packet_event(a, b, c);
-    }
-        
-    
-    // for(auto ele: dsts){
-    //     for(int id = 0;id < node::getNodeNum();id++){
-    //         if(id == (int)ele.id) continue;
-    //         // if(table[id].empty()) continue;
-    //         string msg = to_string(ele.id) + " " + to_string(table[id][ele.id]);
-    //         ctrl_packet_event(id, updTime, msg);
-    //     }
-    // }
-
-    for(int i = dstCnt;i < dstCnt * 2;i++)
-        data_packet_event(dataOutput[i][0], dataOutput[i][1], dataOutput[i][2]);
-
     // // generate all initial events that you want to simulate in the networks
     // unsigned int t = 0, src = 0, dst = BROCAST_ID;
     // // read the input and use data_packet_event to add an initial event
@@ -1434,9 +1421,30 @@ int main()
     //     // 1st factor: the destination id
     //     // 2nd factor: the next hop id toward the destination
     // }
+    /** SORT **/
+    auto cmp = [](ALLpacketEvent a, ALLpacketEvent b) -> bool{
+        if(a.time == b.time){
+            if(a.type == b.type){
+                if(a.type){
+                    return a.src == b.src ? a.dst < b.dst : a.src < b.src;
+                }
+                else{
+                    return a.id == b.id ? a.msg < b.msg : a.id < b.id;
+                }
+            }
+            return a.type < b.type;
+        }
+        return a.time < b.time;
+    };
+    sort(all(allPacketEvents), cmp);
+
+    for(auto ele: allPacketEvents){
+        if(ele.type) data_packet_event(ele.src, ele.dst, ele.time);
+        else ctrl_packet_event(ele.id, ele.time, ele.msg);
+    }
 
     // start simulation!!
-    event::start_simulate(300);
+    event::start_simulate(simDuration);
     // event::flush_events() ;
     // cout << packet::getLivePacketNum() << endl;
     return 0;
