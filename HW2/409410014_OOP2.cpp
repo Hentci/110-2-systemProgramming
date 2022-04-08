@@ -1210,6 +1210,7 @@ void SDN_switch::recv_handler (packet *p){
         dstID = stoi(msg.substr(0, it));
         nxtID = stoi(msg.substr(it + 1, (int)msg.size()));
         one_hop_neighbors[dstID] = nxtID;
+        // cout << msg << "\n";
     }
 
     // you should implement the SDN's distributed algorithm in recv_handler
@@ -1282,7 +1283,7 @@ class ALLpacketEvent{
 
 int main()
 {
-    // freopen("input2.txt", "r", stdin);
+    freopen("input2.txt", "r", stdin);
     
     // header::header_generator::print(); // print all registered headers
     // payload::payload_generator::print(); // print all registered payloads
@@ -1387,6 +1388,7 @@ int main()
             if(i == (int)ele.id) continue;
             table[i][ele.id] = par[i];
             string msg = to_string(ele.id) + " " + to_string(table[i][ele.id]);
+            cout << msg << "\n";
             allPacketEvents.push_back(ALLpacketEvent(false, insTime, i, msg));
         }
     }
@@ -1403,6 +1405,7 @@ int main()
             }
             table[i][ele.id] = par[i];
             string msg = to_string(ele.id) + " " + to_string(table[i][ele.id]);
+            cout << msg << "\n";
             allPacketEvents.push_back(ALLpacketEvent(false, updTime, i, msg));
         }
     }    
