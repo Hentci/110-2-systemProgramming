@@ -6,11 +6,16 @@
 #include <functional>
 #include <iomanip>
 #include <stack>
+#include <algorithm>
 
 using namespace std;
+using ui = unsigned int;
+using ll = long long;
 
 #define SET(func_name,type,var_name,_var_name) void func_name(type _var_name) { var_name = _var_name ;} 
 #define GET(func_name,type,var_name) type func_name() const { return var_name ;}
+#define all(x) x.begin(), x.end()
+#define ar array
 
 class header;
 class payload;
@@ -23,6 +28,7 @@ class link; // new
 // if you want to simulate the more details, you should revise it to be a class
 const unsigned int ONE_HOP_DELAY = 10;
 const unsigned int BROCAST_ID = UINT_MAX;
+const int mxN = 2000;
 
 // BROCAST_ID means that all neighbors are receivers; UINT_MAX is the maximum value of unsigned int
 
@@ -528,16 +534,16 @@ class node {
 };
 map<string,node::node_generator*> node::node_generator::prototypes;
 map<unsigned int,node*> node::id_node_table;
-
+// TODO
 class SDN_switch: public node {
-        // map<unsigned int,bool> one_hop_neighbors; // you can use this variable to record the node's 1-hop neighbors 
+        map<ui, ui> one_hop_neighbors; // you can use this variable to record the node's 1-hop neighbors 
         
-        bool hi; // this is used for example; you can remove it when doing hw2
+        // bool hi; // this is used for example; you can remove it when doing hw2
 
     protected:
         SDN_switch() {} // it should not be used
         SDN_switch(SDN_switch&) {} // it should not be used
-        SDN_switch(unsigned int _id): node(_id), hi(false) {} // this constructor cannot be directly called by users
+        SDN_switch(unsigned int _id): node(_id) {} // this constructor cannot be directly called by users
     
     public:
         ~SDN_switch(){}
@@ -565,6 +571,46 @@ class SDN_switch: public node {
 };
 SDN_switch::SDN_switch_generator SDN_switch::SDN_switch_generator::sample;
 
+// Controller
+class SDN_controller: public node {
+        // map<unsigned int,bool> one_hop_neighbors; // you can use this variable to record the node's 1-hop neighbors 
+        
+        // bool hi; // this is used for example; you can remove it when doing hw2
+        // map <ui, ui> one_hop_neighbors;
+        // map <int, int> ctrl_status;
+        // map <int, map <int, int>> ctrl_status; // [dst, [node, status]]
+        map <int, map <int, map <int, int>>> ctrl_status; // [dst, [round, [node, status]]]
+
+    protected:
+        SDN_controller() {} // it should not be used
+        SDN_controller(SDN_controller&) {} // it should not be used
+        SDN_controller(unsigned int _id): node(_id){} // this constructor cannot be directly called by users
+    
+    public:
+        ~SDN_controller(){}
+        string type() { return "SDN_controller"; }
+        
+        // please define recv_handler function to deal with the incoming packet
+        virtual void recv_handler (packet *p);
+        
+        // void add_one_hop_neighbor (unsigned int n_id) { one_hop_neighbors[n_id] = true; }
+        // unsigned int get_one_hop_neighbor_num () { return one_hop_neighbors.size(); }
+        
+        class SDN_controller_generator;
+        friend class SDN_controller_generator;
+        // SDN_controller is derived from node_generator to generate a node
+        class SDN_controller_generator : public node_generator{
+                static SDN_controller_generator sample;
+                // this constructor is only for sample to register this node type
+                SDN_controller_generator() { /*cout << "SDN_controller registered" << endl;*/ register_node_type(&sample); }
+            protected:
+                virtual node * generate(unsigned int _id){ /*cout << "SDN_controller generated" << endl;*/ return new SDN_controller(_id); }
+            public:
+                virtual string type() { return "SDN_controller";}
+                ~SDN_controller_generator(){}
+        };
+};
+SDN_controller::SDN_controller_generator SDN_controller::SDN_controller_generator::sample;
 class mycomp {
     bool reverse;
     
@@ -1108,7 +1154,7 @@ void SDN_ctrl_pkt_gen_event::trigger() {
     hdr->setSrcID(src); 
     hdr->setDstID(dst);
     hdr->setPreID(src);
-    hdr->setNexID(dst); // in hw3, you should set NexID to src
+    hdr->setNexID(src); // in hw3, you should set NexID to src
     // payload
     pld->setMsg(msg);
     pld->setMatID(mat);
@@ -1116,7 +1162,7 @@ void SDN_ctrl_pkt_gen_event::trigger() {
     
     recv_event::recv_data e_data;
     e_data.s_id = src;
-    e_data.r_id = dst; // in hw3, you should set r_id it src
+    e_data.r_id = src; // in hw3, you should set r_id it src
     e_data._pkt = pkt;
     
     recv_event *e = dynamic_cast<recv_event*> ( event::event_generator::generate("recv_event",trigger_time, (void *)&e_data) );
@@ -1331,6 +1377,7 @@ void node::send(packet *p){ // this function is called by event; not for the use
     packet::discard(p);
 }
 
+ui con_id;
 // you have to write the code in recv_handler of SDN_switch
 void SDN_switch::recv_handler (packet *p){
     // in this function, you are "not" allowed to use node::id_to_node(id) !!!!!!!!
@@ -1341,14 +1388,20 @@ void SDN_switch::recv_handler (packet *p){
     // you can remove the variable hi and create your own variables in class SDN_switch
     if (p == nullptr) return ;
     
-    if (p->type() == "SDN_data_packet" && !hi ) { // the switch receives a packet from the other switch
+    if (p->type() == "SDN_data_packet") { // the switch receives a packet from the other switch
         // cout << "node " << getNodeID() << " send the packet" << endl;
         SDN_data_packet * p2 = nullptr;
         p2 = dynamic_cast<SDN_data_packet*> (p);
+
+        ui dstID = p2 -> getHeader() -> getDstID();
+
+        if(dstID == getNodeID()) return;
+        if(!one_hop_neighbors.count(dstID)) return;
+        
         p2->getHeader()->setPreID ( getNodeID() );
-        p2->getHeader()->setNexID ( BROCAST_ID );
-        p2->getHeader()->setDstID ( BROCAST_ID );
-        hi = true;
+        p2->getHeader()->setNexID ( one_hop_neighbors[dstID] );
+        p2->getHeader()->setDstID ( dstID );
+        // hi = true;
         send_handler (p2);
     }
     else if (p->type() == "SDN_ctrl_packet") { // the switch receives a packet from the controller
@@ -1357,8 +1410,25 @@ void SDN_switch::recv_handler (packet *p){
         SDN_ctrl_payload *l3 = nullptr;
         l3 = dynamic_cast<SDN_ctrl_payload*> (p3->getPayload());
         
-        unsigned mat = l3->getMatID();
-        unsigned act = l3->getActID();
+        unsigned mat = l3->getMatID(); // dstID
+        unsigned act = l3->getActID(); // nxtID
+
+        // after update the rule in the table of each node, exchange the src and dst, pre and nxt in the header
+        // and then, send the packet back to the controller from the node(ack for update)
+        p3 -> getHeader() -> setDstID(p -> getHeader() -> getSrcID());
+        p3 -> getHeader() -> setNexID(p -> getHeader() -> getSrcID());
+        p3 -> getHeader() -> setSrcID(mat);
+        // p3 -> getHeader() -> setPreID(act);
+        // cout << l3 ->getMsg() << "\n";
+        p3 -> getPayload() -> setMsg("ack!");
+        /** debug **/
+        // cout << "=========================================\n";
+        // cout << "DstID: " << p3 -> getHeader() -> getDstID() << " NxtID: " << p3 -> getHeader() -> getNexID() << " PreID: "
+        // << p3 -> getHeader() ->getPreID()  <<" " << p3 -> getHeader() -> getSrcID() <<"\n";
+        // cout << "=========================================\n";
+        send_handler(p3);
+        // ctrl_packet_event(con_id, getNodeID(), p3 -> getHeader() -> getDstID(), p3 -> getHeader() -> getNexID());
+
         // string msg = l3->getMsg(); // get the msg
     }
 
@@ -1405,9 +1475,80 @@ void SDN_switch::recv_handler (packet *p){
     
     // note that packet p will be discarded (deleted) after recv_handler(); you don't need to manually delete it
 }
+// TODO
+int curr_Round = 0;
+// ctrl_status [dst, [node, status]]
+vector<map <int, vector <ar<int, 3>>>> insRound(2000), updRound(2000);// [dst, [round, nodes...]]
+void SDN_controller::recv_handler(packet *p){
+    if(p == nullptr) return;
+    // dst == getnodeID ack 1 -> 2
+    string msg = p -> getPayload() -> getMsg();
+    if(p -> type() == "SDN_ctrl_packet" ){
+        // cout << msg << "\n";
+        int dstID = p -> getHeader() -> getDstID();
+        if(dstID == con_id){ // ack 1 -> 2
+            // cout << "ackkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk" << "\n";
+            // cout << "=========================================\n";
+            // cout << "DstID: " << p -> getHeader() -> getDstID() << " NxtID: " << p -> getHeader() -> getNexID() << " PreID: "
+            // << p -> getHeader() ->getPreID()  <<" " << p -> getHeader() -> getSrcID() <<"\n";
+            // cout << "=========================================\n";
+            /* src == dst, pre == nodeID */
+            int dst = p -> getHeader() -> getSrcID(), nodeid = p -> getHeader() -> getPreID();
+            ctrl_status[dst][curr_Round][nodeid] = 2;
+            // for(auto ele: ) check ins and upd ack == 2// TODO
+        }
+        else{ // non-ack 0 -> 1
+            // cout << dstID << "adasas\n";
+            // cout << "hellooooooooooooooooooooooooooo" << "\n";
+            SDN_ctrl_packet * p2 = nullptr;
+            p2 = dynamic_cast<SDN_ctrl_packet*> (p);
+            SDN_ctrl_payload *l2 = nullptr;
+            l2 = dynamic_cast<SDN_ctrl_payload*> (p2->getPayload());
+        
+            unsigned mat = l2->getMatID(); // dstID
+            unsigned act = l2->getActID(); // nxtID
+            // cout << "test: mat(akaDST): " << mat << " act(akaNXT): " << act << "\n";
+
+            // if(dstID == getNodeID()) return;
+            // if(!one_hop_neighbors.count(dstID)) return;
+
+            /** change status **/
+            ctrl_status[mat][curr_Round][dstID] = 1;
+            
+            p2->getHeader()->setPreID ( dstID );
+            p2->getHeader()->setNexID ( act );
+            p2->getHeader()->setDstID ( mat );
+            // hi = true;
+            send_handler (p2);
+        }
+    }
+    // if(p -> type() == "SDN_ctrl_packet"){ //ack 1 -> 2
+    //     // if(hi is full or empty)
+    //         // for() next_round update
+    //             // ctrl_packet_event
+    // }
+    // else if(){ //non-ack 0 -> 1
+    //     // send
+    // }
+}
+
+class nd{
+    public:
+    int id;
+};
+
+class edge{
+    public:
+    bool isNew;
+    ui neighbor;
+    ll w;
+    edge(){}
+    edge(bool a, int b, ll c): isNew(a), neighbor(b), w(c){}
+};
 
 int main()
 {
+    freopen("input.txt", "r", stdin);
     // header::header_generator::print(); // print all registered headers
     // payload::payload_generator::print(); // print all registered payloads
     // packet::packet_generator::print(); // print all registered packets
@@ -1415,51 +1556,207 @@ int main()
     // event::event_generator::print(); // print all registered events
     // link::link_generator::print(); // print all registered links 
     
-    // read the input and generate switch nodes
-    for (unsigned int id = 0; id < 5; id ++){
-        node::node_generator::generate("SDN_switch",id);
+    int n, dstCnt, m, insTime, updTime, simDuration;
+    cin >> n >> dstCnt >> m >> insTime >> updTime >> simDuration;
+    vector <vector <edge>> G(mxN);
+    vector <nd> dsts(dstCnt);
+    map <ui, map <ui, ui>> table; // [id, dst, nxt]
+
+    for(int i = 0, a;i < dstCnt;i++){
+        cin >> a;
+        dsts[i].id = a;
     }
-    unsigned int con_id = node::getNodeNum();
-    // set switches' neighbors
-    node::id_to_node(0)->add_phy_neighbor(1);
-    node::id_to_node(1)->add_phy_neighbor(0);
-    node::id_to_node(0)->add_phy_neighbor(2);
-    node::id_to_node(2)->add_phy_neighbor(0);
-    node::id_to_node(1)->add_phy_neighbor(2);
-    node::id_to_node(2)->add_phy_neighbor(1);
-    node::id_to_node(1)->add_phy_neighbor(3);
-    node::id_to_node(3)->add_phy_neighbor(1);
-    node::id_to_node(2)->add_phy_neighbor(4);
-    node::id_to_node(4)->add_phy_neighbor(2);
+
+    /******** switch ********/
+    for(ui id = 0;id < n;id++)
+        node::node_generator::generate("SDN_switch", id);
+
+    // read the input and generate switch nodes
+    // for (unsigned int id = 0; id < 5; id ++){
+    //     node::node_generator::generate("SDN_switch",id);
+    // }
+    /******** controller ********/
+    con_id = node::getNodeNum();
+    node::node_generator::generate("SDN_controller", con_id);
+
+    for(ui id = 0;id < n;id++){
+        node::id_to_node(id) -> add_phy_neighbor(con_id);
+        node::id_to_node(con_id) -> add_phy_neighbor(id);
+    }
+
+    // linkid -> useless
+    int a, b, linkid;
+    ll ow, nw;
+    for(int i = 0;i < m;i++){
+        cin >> linkid >> a >> b >> ow >> nw;
+        G[a].push_back(edge(false, b, ow));
+        G[b].push_back(edge(false, a, ow));
+        G[a].push_back(edge(true, b, nw));
+        G[b].push_back(edge(true, a, nw));
+        node::id_to_node(a) -> add_phy_neighbor(b);
+        node::id_to_node(b) -> add_phy_neighbor(a);
+    }
     
+    // use for-loop to link node and controller
+
+    vector <ll> d(n);
+    vector <ui> par(n); // record the shortest path 
+    auto dijk = [&](bool status, ui st) -> void{
+        fill(d.begin(), d.end(), 0x3f3f3f3f3f);
+        d[st] = 0;
+        par[st] = st;
+        /* init */
+
+        /* dijkstra */
+        priority_queue <ar<ll, 2>, vector <ar<ll, 2>>, greater<ar<ll, 2>>> pq;
+        pq.push({0, st});
+        while(!pq.empty()){
+            auto [wei, v] = pq.top(); pq.pop();
+            if(wei > d[v]) continue;
+            for(auto ele: G[v]){
+                // to determine use which weight
+                if(ele.isNew != status) continue;
+                // upd smaller node if they are same d
+                if(d[ele.neighbor] == d[v] + ele.w && v < par[ele.neighbor])
+                    par[ele.neighbor] = v;
+                // dijkstra -> greedy
+                if(d[ele.neighbor] > d[v] + ele.w){
+                    par[ele.neighbor] = v;
+                    d[ele.neighbor] = d[v] + ele.w;
+                    pq.push({d[ele.neighbor], ele.neighbor});
+                }
+            }
+        }
+    };
 
     // generate all initial events that you want to simulate in the networks
-    unsigned int t = 0, src = 0, dst = BROCAST_ID;
+    // unsigned int t = 0, src = 0, dst = BROCAST_ID;
     // read the input and use data_packet_event to add an initial event
-    data_packet_event(src, dst, t);
+    // data_packet_event(src, dst, t);
+
+    int t, src, dst;
+    while(cin >> t >> src >> dst)
+        data_packet_event(src, dst, t);
     // 1st parameter: the source node
     // 2nd parameter: the destination node
     // 3rd parameter: time
     // 4th parameter: msg for debug (optional)
     
     // dst = 0;
-    for (unsigned int id = 0; id < node::getNodeNum(); id ++){
-    // for (int id = node::getNodeNum()-1; id >= 0; id --){ // this line is used to check whether the sequence affects the results
-        ctrl_packet_event(con_id, id, id, id+1, 100);
-        // note that we don't need to use msg for network update anymore in hw3
-        // thus, function ctrl_packet_event is updated as follows:
-        // 1st parameter: the node that has to update the rule
-        // 2nd parameter: the target node of the rule (i.e., match ID)
-        // 3rd parameter: the next-hop node toward the target node recorded in the rule (i.e., action ID)
-        // 4th parameter: time (optional)
-        // 5th parameter: msg for debug (optional)
-        
-        // !!!! note that you can use "ctrl_packet_event (con_id, id, mat, act)" in SDN_controller's recv_handler
-        // !!!! to generate the new ctrl msg in the next round
+    // No need to use compare function
+
+    // vector <map<int, vector<int>>>insRule(dstCnt); //[dst, [round, nodes...]]
+    // one dst one rule
+    
+    auto procRule = [&](vector<map<int, vector<int>>> forest, vector<map<int, vector<ar<int, 3>>>> &round) -> void{
+        vector <bool> bfs_ok(n);
+        vector <int> bfs_par(n);
+        for(auto ele: dsts){
+            queue <ar<int, 2>> q; //[node, level]
+            fill(all(bfs_ok), false);
+            fill(all(bfs_par), -1);
+            q.push({ele.id, -1});
+            while(!q.empty()){
+                auto [u, lv] = q.front(); q.pop();
+                bfs_ok[u] = true;
+                for(auto v: forest[ele.id][u]){
+                    if(!bfs_ok[v]){
+                        bfs_ok[v] = true;
+                        bfs_par[v] = u;
+                        q.push({v, lv + 1});
+                        // conid, id, dstID, nxtID, (time), (msg)
+                        // ctrl_packet_event(con_id, v, ele.id, u, currTime);
+                    }
+                }
+                if(u == ele.id) continue;
+                else{
+                    round[ele.id][lv].push_back({u, ele.id, bfs_par[u]});
+                    // ctrl_packet_event(con_id, u, ele.id, par[u], startTime + 10 * lv, "OGC");
+                }
+            }
+        }
+    };
+
+    // TODO time -> update rule
+    // vector <vector <int>> insRule(n); //[dst, vector<node>]
+    vector <map <int, vector<int>>> insForest(n), updForest(n); //[dst, [i, [adj...]]]
+    /* process the old table */
+    for(auto ele: dsts){
+        dijk(0, ele.id);
+        for(int i = 0;i < n;i++){
+            if(i == (int)ele.id) continue;
+            table[i][ele.id] = par[i];
+            insForest[ele.id][i].push_back(table[i][ele.id]);
+            insForest[ele.id][table[i][ele.id]].push_back(i);
+            // ctrl_packet_event(con_id, i, ele.id, table[i][ele.id], insTime);
+            // string msg = to_string(ele.id) + " " + to_string(table[i][ele.id]);
+            // cout << msg << "\n";
+        }
     }
+    procRule(insForest, insRound);
+    /** debug **/
+    // for(int i = 0;i < n;i++){
+    //     cout << i << "dst: \n";
+    //     for(auto ele: insForest[i]){
+    //         cout << ele.first << ": ";
+    //         for(auto adjnd: ele.second)
+    //             cout << adjnd << " ";
+    //         cout << "\n";
+    //     }
+    // }
+    // for(int i = 0;i < n;i++){
+    //     cout << "dst" << i << "\n";
+    //     for(auto ele: insRound[i]){
+    //         cout << ele.first << "(round): \n";
+    //         for(auto ndd: ele.second){
+    //             cout << ndd << " ";
+    //         }
+    //         cout << "\n";
+    //     }
+    // }
+    /** start the first ctrl packet round **/
+    for(auto ele: dsts){
+        for(auto elee: insRound[ele.id][0]){
+            ctrl_packet_event(con_id, elee[0], elee[1], elee[2], insTime, "firstInsRound");
+        }
+    }
+    
+    // vector <tuple <ui, ui, string>> ctrlOutputNEW;
+    /* process the new table */
+    for(auto ele: dsts){
+        dijk(1, ele.id);
+        for(int i = 0;i < n;i++){
+            if(i == (int)ele.id) continue;
+            if(par[i] == table[i][ele.id]){
+                // table[i].erase(ele.id); // NOT a bug TAT
+                continue;
+            }
+            table[i][ele.id] = par[i];
+            updForest[ele.id][i].push_back(table[i][ele.id]);
+            updForest[ele.id][table[i][ele.id]].push_back(i);
+            // ctrl_packet_event(con_id, i, ele.id, table[i][ele.id], updTime);
+            // string msg = to_string(ele.id) + " " + to_string(table[i][ele.id]);
+            // cout << msg << "\n";
+        }
+    }
+    procRule(updForest, updRound);
+    // for (unsigned int id = 0; id < node::getNodeNum(); id ++){
+    // // for (int id = node::getNodeNum()-1; id >= 0; id --){ // this line is used to check whether the sequence affects the results
+    //     ctrl_packet_event(con_id, id, id, id+1, 100);
+    //     // note that we don't need to use msg for network update anymore in hw3
+    //     // thus, function ctrl_packet_event is updated as follows:
+    //     // 1st parameter: the node that has to update the rule
+    //     // 2nd parameter: the target node of the rule (i.e., match ID) mat -> dstID
+    //     // 3rd parameter: the next-hop node toward the target node recorded in the rule (i.e., action ID) act -> nxtID
+    //     // 4th parameter: time (optional)
+    //     // 5th parameter: msg for debug (optional)
+        
+    //     // !!!! note that you can use "ctrl_packet_event (con_id, id, mat, act)" in SDN_controller's recv_handler
+    //     // !!!! to generate the new ctrl msg in the next round
+    // }
 
     // start simulation!!
-    event::start_simulate(300);
+    event::start_simulate(simDuration);
     // event::flush_events() ;
     // cout << packet::getLivePacketNum() << endl;
     return 0;
