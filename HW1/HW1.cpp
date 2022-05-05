@@ -22,7 +22,7 @@ class edge{
     edge(bool a, int b, ll c): isold(a), neighbor(b), w(c){}
 };
 int main(){
-    // freopen("input.txt", "r", stdin);
+    freopen("input.txt", "r", stdin);
     int n, dst, m; // n -> the number of nodes, m -> the number of links
     cin >> n >> dst >> m;
     vector <vector <edge>> G(mxn); // Graph

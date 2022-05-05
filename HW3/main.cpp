@@ -1495,7 +1495,7 @@ void SDN_controller::recv_handler(packet *p){
             /* src == dst, pre == nodeID */
             int dst = p -> getHeader() -> getSrcID(), nodeid = p -> getHeader() -> getPreID();
             ctrl_status[dst][curr_Round][nodeid] = 2;
-            // for(auto ele: ) check ins and upd ack == 2// TODO
+            for(auto ele: ) check ins and upd ack == 2
         }
         else{ // non-ack 0 -> 1
             // cout << dstID << "adasas\n";
@@ -1717,7 +1717,7 @@ int main()
     /** start the first ctrl packet round **/
     for(auto ele: dsts){
         for(auto elee: insRound[ele.id][0]){
-            ctrl_packet_event(con_id, elee[0], elee[1], elee[2], insTime, "firstInsRound");
+            ctrl_packet_event(con_id, elee[0], elee[1], elee[2], insTime, "InsRound");
         }
     }
     
@@ -1740,6 +1740,11 @@ int main()
         }
     }
     procRule(updForest, updRound);
+    for(auto ele: dsts){
+        for(auto elee: updRound[ele.id][0]){
+            ctrl_packet_event(con_id, elee[0], elee[1], elee[2], updTime, "UpdRound");
+        }
+    }
     // for (unsigned int id = 0; id < node::getNodeNum(); id ++){
     // // for (int id = node::getNodeNum()-1; id >= 0; id --){ // this line is used to check whether the sequence affects the results
     //     ctrl_packet_event(con_id, id, id, id+1, 100);
