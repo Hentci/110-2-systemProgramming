@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <stack>
 #include <algorithm>
+#include <string>
 
 using namespace std;
 using ui = unsigned int;
@@ -579,7 +580,7 @@ class SDN_controller: public node {
         // map <ui, ui> one_hop_neighbors;
         // map <int, int> ctrl_status;
         // map <int, map <int, int>> ctrl_status; // [dst, [node, status]]
-        map <int, map <int, map <int, int>>> ctrl_status; // [dst, [round, [node, status]]]
+        map <int, map <int, map <int, int>>> ins_ctrl_status, upd_ctrl_status; // [dst, [round, [node, status]]]
 
     protected:
         SDN_controller() {} // it should not be used
@@ -1413,14 +1414,20 @@ void SDN_switch::recv_handler (packet *p){
         unsigned mat = l3->getMatID(); // dstID
         unsigned act = l3->getActID(); // nxtID
 
+        /* fill */
+        one_hop_neighbors[mat] = act;
+
         // after update the rule in the table of each node, exchange the src and dst, pre and nxt in the header
         // and then, send the packet back to the controller from the node(ack for update)
-        p3 -> getHeader() -> setDstID(p -> getHeader() -> getSrcID());
-        p3 -> getHeader() -> setNexID(p -> getHeader() -> getSrcID());
-        p3 -> getHeader() -> setSrcID(mat);
-        // p3 -> getHeader() -> setPreID(act);
+        p3 -> getHeader() -> setSrcID(p -> getHeader() -> getDstID());
+        p3 -> getHeader() -> setPreID(p -> getHeader() -> getNexID());
+        p3 -> getHeader() -> setDstID(con_id);
+        p3 -> getHeader() -> setNexID(con_id);
         // cout << l3 ->getMsg() << "\n";
-        p3 -> getPayload() -> setMsg("ack!");
+        string msg = p -> getPayload() -> getMsg();
+        p3 -> getPayload() -> setMsg(msg);
+        // cout << msg << "\n";
+        // p3 -> getPayload() -> setMsg("ack!");
         /** debug **/
         // cout << "=========================================\n";
         // cout << "DstID: " << p3 -> getHeader() -> getDstID() << " NxtID: " << p3 -> getHeader() -> getNexID() << " PreID: "
@@ -1476,8 +1483,9 @@ void SDN_switch::recv_handler (packet *p){
     // note that packet p will be discarded (deleted) after recv_handler(); you don't need to manually delete it
 }
 // TODO
-int curr_Round = 0;
+int ins_curr_Round = 0, upd_curr_Round = 0;
 // ctrl_status [dst, [node, status]]
+vector <int> dsts;
 vector<map <int, vector <ar<int, 3>>>> insRound(2000), updRound(2000);// [dst, [round, nodes...]]
 void SDN_controller::recv_handler(packet *p){
     if(p == nullptr) return;
@@ -1487,15 +1495,67 @@ void SDN_controller::recv_handler(packet *p){
         // cout << msg << "\n";
         int dstID = p -> getHeader() -> getDstID();
         if(dstID == con_id){ // ack 1 -> 2
-            // cout << "ackkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk" << "\n";
             // cout << "=========================================\n";
             // cout << "DstID: " << p -> getHeader() -> getDstID() << " NxtID: " << p -> getHeader() -> getNexID() << " PreID: "
             // << p -> getHeader() ->getPreID()  <<" " << p -> getHeader() -> getSrcID() <<"\n";
             // cout << "=========================================\n";
             /* src == dst, pre == nodeID */
-            int dst = p -> getHeader() -> getSrcID(), nodeid = p -> getHeader() -> getPreID();
-            ctrl_status[dst][curr_Round][nodeid] = 2;
-            for(auto ele: ) check ins and upd ack == 2
+            SDN_ctrl_packet *p4 = nullptr;
+            p4 = dynamic_cast<SDN_ctrl_packet*> (p);
+            SDN_ctrl_payload *l4 = nullptr;
+            l4 = dynamic_cast<SDN_ctrl_payload*> (p4->getPayload());
+            
+            unsigned mat = l4->getMatID(); // dstID
+
+            // cout << mat << " mat dayo ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
+
+            int dst = mat, nodeid = p4 -> getHeader() -> getPreID();
+            // ctrl_status[dst][curr_Round][nodeid] = 2;
+            /** check **/
+            if(msg == "InsRound"){
+                ins_ctrl_status[dst][ins_curr_Round][nodeid] = 2;
+                bool ok = true;
+                for(auto ele: dsts){
+                    for(auto roundNode: insRound[ele][ins_curr_Round]){
+                        if(ins_ctrl_status[ele][ins_curr_Round][roundNode[0]] != 2)
+                            ok = false;
+                    }
+                }
+                if(ok){
+                    // cout << "hihi-----------------------------insnextround\n";
+                    ins_curr_Round++;
+                    for(auto ele: dsts){
+                        for(auto roundNode: insRound[ele][ins_curr_Round]){
+                            ctrl_packet_event(con_id, roundNode[0], roundNode[1], roundNode[2], event::getCurTime(), "InsRound");
+                        }
+                    }
+                } 
+            }
+            else if(msg == "UpdRound"){
+                upd_ctrl_status[dst][upd_curr_Round][nodeid] = 2;
+                bool ok = true;
+                for(auto ele: dsts){
+                    for(auto roundNode: updRound[ele][upd_curr_Round]){
+                        if(upd_ctrl_status[ele][upd_curr_Round][roundNode[0]] != 2)
+                            ok = false;
+                    }
+                }
+                if(ok){
+                    // cout << "hihi-----------------------------updnextround\n";
+                    upd_curr_Round++;
+                    for(auto ele: dsts){
+                        for(auto roundNode: updRound[ele][upd_curr_Round]){
+                            ctrl_packet_event(con_id, roundNode[0], roundNode[1], roundNode[2], event::getCurTime(), "UpdRound");
+                        }
+                        // for(int i = 0;i < 5;i++){
+                        //     cout << upd_ctrl_status[ele][upd_curr_Round][i] << " ";
+                        // }
+                        // cout << "\n";
+                    }
+                    // cout << upd_curr_Round << "<- updCurrent Round <----------------------------------------\n";
+                }
+            }
+            // for(auto ele: ) check ins and upd ack == 2
         }
         else{ // non-ack 0 -> 1
             // cout << dstID << "adasas\n";
@@ -1513,11 +1573,24 @@ void SDN_controller::recv_handler(packet *p){
             // if(!one_hop_neighbors.count(dstID)) return;
 
             /** change status **/
-            ctrl_status[mat][curr_Round][dstID] = 1;
-            
-            p2->getHeader()->setPreID ( dstID );
-            p2->getHeader()->setNexID ( act );
-            p2->getHeader()->setDstID ( mat );
+            // ctrl_status[mat][curr_Round][dstID] = 1;
+    
+            p2->getHeader()->setPreID ( con_id ); // con_id?
+            // dstID == nodeID
+            p2->getHeader()->setNexID ( dstID );
+            p2->getHeader()->setDstID ( dstID );
+            // string nodeID = to_string(dstID);
+            // msg += nodeID;
+            p2 -> getPayload() -> setMsg(msg);
+            // cout << msg << "\n";
+            if(msg == "InsRound") ins_ctrl_status[mat][ins_curr_Round][dstID] = 1;
+            else if(msg == "UpdRound") upd_ctrl_status[mat][upd_curr_Round][dstID] = 1;
+            // for(auto ele: dsts){
+            //     for(int i = 0;i < 5;i++){
+            //         cout << upd_ctrl_status[ele][upd_curr_Round][i] << " ";
+            //     }
+            //     cout << "\n";
+            // }
             // hi = true;
             send_handler (p2);
         }
@@ -1548,7 +1621,7 @@ class edge{
 
 int main()
 {
-    freopen("input.txt", "r", stdin);
+    // freopen("input.txt", "r", stdin);
     // header::header_generator::print(); // print all registered headers
     // payload::payload_generator::print(); // print all registered payloads
     // packet::packet_generator::print(); // print all registered packets
@@ -1559,12 +1632,12 @@ int main()
     int n, dstCnt, m, insTime, updTime, simDuration;
     cin >> n >> dstCnt >> m >> insTime >> updTime >> simDuration;
     vector <vector <edge>> G(mxN);
-    vector <nd> dsts(dstCnt);
+    // vector <nd> dsts(dstCnt);
     map <ui, map <ui, ui>> table; // [id, dst, nxt]
 
     for(int i = 0, a;i < dstCnt;i++){
         cin >> a;
-        dsts[i].id = a;
+        dsts.push_back(a);
     }
 
     /******** switch ********/
@@ -1579,10 +1652,6 @@ int main()
     con_id = node::getNodeNum();
     node::node_generator::generate("SDN_controller", con_id);
 
-    for(ui id = 0;id < n;id++){
-        node::id_to_node(id) -> add_phy_neighbor(con_id);
-        node::id_to_node(con_id) -> add_phy_neighbor(id);
-    }
 
     // linkid -> useless
     int a, b, linkid;
@@ -1597,6 +1666,10 @@ int main()
         node::id_to_node(b) -> add_phy_neighbor(a);
     }
     
+    for(ui id = 0;id < n;id++){
+        node::id_to_node(id) -> add_phy_neighbor(con_id);
+        node::id_to_node(con_id) -> add_phy_neighbor(id);
+    }
     // use for-loop to link node and controller
 
     vector <ll> d(n);
@@ -1655,11 +1728,11 @@ int main()
             queue <ar<int, 2>> q; //[node, level]
             fill(all(bfs_ok), false);
             fill(all(bfs_par), -1);
-            q.push({ele.id, -1});
+            q.push({ele, -1});
             while(!q.empty()){
                 auto [u, lv] = q.front(); q.pop();
                 bfs_ok[u] = true;
-                for(auto v: forest[ele.id][u]){
+                for(auto v: forest[ele][u]){
                     if(!bfs_ok[v]){
                         bfs_ok[v] = true;
                         bfs_par[v] = u;
@@ -1668,9 +1741,9 @@ int main()
                         // ctrl_packet_event(con_id, v, ele.id, u, currTime);
                     }
                 }
-                if(u == ele.id) continue;
+                if(u == ele) continue;
                 else{
-                    round[ele.id][lv].push_back({u, ele.id, bfs_par[u]});
+                    round[ele][lv].push_back({u, ele, bfs_par[u]});
                     // ctrl_packet_event(con_id, u, ele.id, par[u], startTime + 10 * lv, "OGC");
                 }
             }
@@ -1682,12 +1755,12 @@ int main()
     vector <map <int, vector<int>>> insForest(n), updForest(n); //[dst, [i, [adj...]]]
     /* process the old table */
     for(auto ele: dsts){
-        dijk(0, ele.id);
+        dijk(0, ele);
         for(int i = 0;i < n;i++){
-            if(i == (int)ele.id) continue;
-            table[i][ele.id] = par[i];
-            insForest[ele.id][i].push_back(table[i][ele.id]);
-            insForest[ele.id][table[i][ele.id]].push_back(i);
+            if(i == ele) continue;
+            table[i][ele] = par[i];
+            insForest[ele][i].push_back(table[i][ele]);
+            insForest[ele][table[i][ele]].push_back(i);
             // ctrl_packet_event(con_id, i, ele.id, table[i][ele.id], insTime);
             // string msg = to_string(ele.id) + " " + to_string(table[i][ele.id]);
             // cout << msg << "\n";
@@ -1716,7 +1789,7 @@ int main()
     // }
     /** start the first ctrl packet round **/
     for(auto ele: dsts){
-        for(auto elee: insRound[ele.id][0]){
+        for(auto elee: insRound[ele][0]){
             ctrl_packet_event(con_id, elee[0], elee[1], elee[2], insTime, "InsRound");
         }
     }
@@ -1724,24 +1797,45 @@ int main()
     // vector <tuple <ui, ui, string>> ctrlOutputNEW;
     /* process the new table */
     for(auto ele: dsts){
-        dijk(1, ele.id);
+        dijk(1, ele);
         for(int i = 0;i < n;i++){
-            if(i == (int)ele.id) continue;
-            if(par[i] == table[i][ele.id]){
-                // table[i].erase(ele.id); // NOT a bug TAT
-                continue;
-            }
-            table[i][ele.id] = par[i];
-            updForest[ele.id][i].push_back(table[i][ele.id]);
-            updForest[ele.id][table[i][ele.id]].push_back(i);
+            if(i == ele) continue;
+            // if(par[i] == table[i][ele]){
+            //     // table[i].erase(ele.id); // NOT a bug TAT
+            //     continue;
+            // }
+            table[i][ele] = par[i];
+            updForest[ele][i].push_back(table[i][ele]);
+            updForest[ele][table[i][ele]].push_back(i);
             // ctrl_packet_event(con_id, i, ele.id, table[i][ele.id], updTime);
             // string msg = to_string(ele.id) + " " + to_string(table[i][ele.id]);
             // cout << msg << "\n";
         }
     }
     procRule(updForest, updRound);
+    /** debug **/
+    // for(int i = 0;i < n;i++){
+    //     cout << i << "dst: \n";
+    //     for(auto ele: updForest[i]){
+    //         cout << ele.first << ": ";
+    //         for(auto adjnd: ele.second)
+    //             cout << adjnd << " ";
+    //         cout << "\n";
+    //     }
+    // }
+    // for(auto dsttt: dsts){
+    //     cout << "dst: " << dsttt << "\n";
+    //     for(auto ele: updRound[dsttt]){
+    //         cout << ele.first << "(round): \n";
+    //         for(auto ndd: ele.second){
+    //             cout << ndd[0] << " ";
+    //         }
+    //         cout << "\n";
+    //     }
+    // }
     for(auto ele: dsts){
-        for(auto elee: updRound[ele.id][0]){
+        for(auto elee: updRound[ele][0]){
+            // cout<< "asaaaaaaaaaaaaaaaaaaaaaaaaaaaa upd\n";
             ctrl_packet_event(con_id, elee[0], elee[1], elee[2], updTime, "UpdRound");
         }
     }
