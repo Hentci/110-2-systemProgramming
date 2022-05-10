@@ -1660,11 +1660,6 @@ int main()
         }
     };
 
-    // generate all initial events that you want to simulate in the networks
-    // unsigned int t = 0, src = 0, dst = BROCAST_ID;
-    // read the input and use data_packet_event to add an initial event
-    // data_packet_event(src, dst, t);
-
     int t, src, dst;
     while(cin >> t >> src >> dst)
         data_packet_event(src, dst, t);
@@ -1672,16 +1667,10 @@ int main()
     // 2nd parameter: the destination node
     // 3rd parameter: time
     // 4th parameter: msg for debug (optional)
-    
-    // dst = 0;
-    // No need to use compare function
 
-    // vector <map<int, vector<int>>>insRule(dstCnt); //[dst, [round, nodes...]]
-    // one dst one rule
     vector <map <int, vector<int>>> insForest(n), updForest(n); //[dst, [i, [adj...]]]
 
     vector <int> insDeep(2000, 0), updDeep(2000, 0);
-    // FIXME
     auto insProcRule = [&](vector<map<int, vector<int>>> forest, vector<map<int, vector<ar<int, 3>>>> &round) -> void{
         vector <bool> bfs_ok(n);
         vector <int> bfs_par(n);
@@ -1752,19 +1741,7 @@ int main()
                 }
             }
         }
-        // -1 round (deep - 1)
-
-        // for(auto ele: dsts){
-        //     // if(insDeep[ele] > 1){
-        //         for(auto nodd: insRound[ele][insDeep[ele]]){
-                    
-        //         }
-        //     // }
-        // }
     };
-
-    // TODO time -> update rule
-    // vector <vector <int>> insRule(n); //[dst, vector<node>]
 
     /* process the old table */
     for(auto ele: dsts){
@@ -1775,8 +1752,6 @@ int main()
             insForest[ele][i].push_back(table[i][ele]);
             insForest[ele][table[i][ele]].push_back(i);
             ctrl_packet_event(con_id, i, ele, table[i][ele], insTime, "InsRound");
-            // string msg = to_string(ele.id) + " " + to_string(table[i][ele.id]);
-            // cout << msg << "\n";
         }
     }
     insProcRule(insForest, insRound);
@@ -1800,6 +1775,7 @@ int main()
     //         cout << "\n";
     //     }
     // }
+
     /** start the first ctrl packet round **/
     // for(auto ele: dsts){
     //     for(auto elee: insRound[ele][0]){
@@ -1807,7 +1783,6 @@ int main()
     //     }
     // }
     
-    // vector <tuple <ui, ui, string>> ctrlOutputNEW;
     /* process the new table */
     for(auto ele: dsts){
         dijk(1, ele);
@@ -1830,19 +1805,15 @@ int main()
     for(auto dstt: dsts){
         for(int lv = 0;lv <= insDeep[dstt];lv++){
             for(auto nodd: insRound[dstt][insDeep[dstt] - lv]){
-                // cout <<"()()()() " << lv << "\n";
                 nodeRnd[dstt][nodd[0]] = lv;
             }
         }
         for(int lv = 0;lv <= updDeep[dstt];lv++){
             for(auto nodd: updRound[dstt][lv]){
                 chmin(nodeRnd[dstt][nodd[0]], lv);
-                // cout << nodeRnd[dst][nodd[0]] <<" " << nodd[0] << " qq \n";
             }
         }
     }
-    // cout << insDeep[1] << "aaaaaaaaa\n";
-    // cout << updDeep[1] << "asdasdasd\n";
 
     // for(auto ele: dsts){
     //     cout<< "DST: " << ele << "\n";
@@ -1890,7 +1861,6 @@ int main()
     // }
     for(auto ele: dsts){
         for(auto elee: newUpdRound[ele][0]){
-            // cout<< "asaaaaaaaaaaaaaaaaaaaaaaaaaaaa upd\n";
             ctrl_packet_event(con_id, elee[0], elee[1], elee[2], updTime, "UpdRound");
         }
     }
